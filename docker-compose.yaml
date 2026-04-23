@@ -1,0 +1,48 @@
+services:
+  broker-norte:
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_norte
+    environment:
+      - SECTOR_NAME=Norte
+      - PORT=5000
+    networks:
+      ormuz_net:
+        ipv4_address: 172.20.0.2
+
+  broker-sul:
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_sul
+    environment:
+      - SECTOR_NAME=Sul
+      - PORT=5000
+    networks:
+      ormuz_net:
+        ipv4_address: 172.20.0.3
+
+  sensor-teste:
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_cliente
+    depends_on:
+      - broker-norte
+      - broker-sul
+    environment:
+      - BROKER_LIST=172.20.0.2:5000,172.20.0.3:5000
+      - SENSOR_TYPE=Monitoramento
+    networks:
+      - ormuz_net
+
+networks:
+  ormuz_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
