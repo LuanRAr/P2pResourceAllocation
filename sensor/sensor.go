@@ -3,73 +3,106 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
 	"time"
 )
 
-type Sensor struct {
-	ID          string
-	BrokerList  []string
-	CurrentIdx  int
-	Conn        net.Conn
+type MessageType string
+
+const MsgAlert MessageType = "ALERT"
+
+type Message struct {
+	Type    MessageType `json:"type"`
+	Payload interface{} `json:"payload"`
+}
+
+type AlertPayload struct {
+	AlertID   string    `json:"alert_id"`
+	SensorID  string    `json:"sensor_id"`
+	Sector    string    `json:"sector"`
+	AlertType string    `json:"alert_type"`
+	Value     float64   `json:"value"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func newID() string {
+	return fmt.Sprintf("%016x", rand.Int63())
 }
 
 func main() {
-	// Exemplo: BROKER_LIST=172.20.0.2:5000,172.20.0.3:5000
-	list := os.Getenv("BROKER_LIST")
-	s := &Sensor{
-		ID:         "SENSOR-01",
-		BrokerList: strings.Split(list, ","),
-		CurrentIdx: 0,
+	rand.Seed(time.Now().UnixNano())
+
+	brokerListRaw := os.Getenv("BROKER_LIST")
+	sectorName    := os.Getenv("SECTOR_NAME")
+	sensorType    := os.Getenv("SENSOR_TYPE")
+
+	if brokerListRaw == "" { brokerListRaw = "localhost:5000" }
+	if sectorName == ""    { sectorName = "Desconhecido" }
+	if sensorType == ""    { sensorType = "Generico" }
+
+	var brokers []string
+	for _, b := range strings.Split(brokerListRaw, ",") {
+		if b = strings.TrimSpace(b); b != "" {
+			brokers = append(brokers, b)
+		}
 	}
 
+	sensorID := fmt.Sprintf("SENSOR-%s-%04d", sensorType, rand.Intn(10000))
+	fmt.Printf("[%s] iniciado | setor=%s | brokers=%v\n", sensorID, sectorName, brokers)
+
 	for {
-		err := s.ensureConnection()
+		time.Sleep(time.Duration(rand.Intn(10)+5) * time.Second)
+
+		value := rand.Float64() * 100
+		if value <= 70 {
+			continue // só alerta para valores críticos
+		}
+
+		alert := AlertPayload{
+			AlertID:   newID(),
+			SensorID:  sensorID,
+			Sector:    sectorName,
+			AlertType: sensorType,
+			Value:     value,
+			Timestamp: time.Now(),
+		}
+
+		sendWithFallback(brokers, alert, sensorID)
+	}
+}
+
+// tenta cada broker da lista em ordem até conseguir enviar.
+func sendWithFallback(brokers []string, alert AlertPayload, sensorID string) {
+	msg := Message{Type: MsgAlert, Payload: alert}
+
+	for i, addr := range brokers {
+		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err != nil {
-			fmt.Printf("[!] Falha crítica: Nenhum broker disponível. Tentando novamente em 5s...\n")
-			time.Sleep(5 * time.Second)
+			fmt.Printf("[%s] broker %s inacessível (tentativa %d/%d)\n",
+				sensorID, addr, i+1, len(brokers))
 			continue
 		}
 
-		// Simula envio de dados
-		alert := map[string]string{"sensor_id": s.ID, "msg": "status_ok"}
-		err = json.NewEncoder(s.Conn).Encode(alert)
-		
-		if err != nil {
-			fmt.Println("[X] Conexão perdida com o Broker. Iniciando failover...")
-			s.Conn.Close()
-			s.Conn = nil
-			s.rotateBroker() // Muda para o próximo IP da lista
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		encErr := json.NewEncoder(conn).Encode(msg)
+		conn.Close()
+
+		if encErr != nil {
+			fmt.Printf("[%s] erro ao enviar para %s: %v\n", sensorID, addr, encErr)
+			continue
 		}
 
-		time.Sleep(2 * time.Second)
-	}
-}
-
-func (s *Sensor) ensureConnection() error {
-	if s.Conn != nil {
-		return nil
-	}
-
-	for i := 0; i < len(s.BrokerList); i++ {
-		addr := s.BrokerList[s.CurrentIdx]
-		fmt.Printf("[...] Tentando conectar ao Broker: %s\n", addr)
-		
-		conn, err := néet.DialTimeout("tcp", addr, 2*time.Second)
-		if err == nil {
-			fmt.Printf("[V] Conectado ao Broker: %s\n", addr)
-			s.Conn = conn
-			return nil
+		label := "principal"
+		if i > 0 {
+			label = fmt.Sprintf("fallback[%d]", i)
 		}
-
-		fmt.Printf("[!] Broker %s indisponível.\n", addr)
-		s.rotateBroker()
+		fmt.Printf("[%s] alerta %s → %s (%s) | valor=%.2f\n",
+			sensorID, alert.AlertID, addr, label, alert.Value)
+		return
 	}
-	return fmt.Errorf("all brokers down")
-}
 
-func (s *Sensor) rotateBroker() {
-	s.CurrentIdx = (s.CurrentIdx + 1) % len(s.BrokerList)
+	fmt.Printf("[%s] FALHA: nenhum broker disponível para alerta %s\n", sensorID, alert.AlertID)
 }
