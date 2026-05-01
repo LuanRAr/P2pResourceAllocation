@@ -27,7 +27,7 @@ type Message struct {
 type DronePayload struct {
 	DroneID   string    `json:"drone_id"`
 	Sector    string    `json:"sector"`
-	Status    string    `json:"status"` // "AVAILABLE" "IN_MISSION"
+	Status    string    `json:"status"` 
 	MissionID string    `json:"mission_id,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -43,13 +43,37 @@ type Drone struct {
 	missionID string
 }
 
+//IDs únicos de 00 a 100
+var (
+	rng         *rand.Rand
+	availableIDs []int
+)
+
+func init() {
+	rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	initIDs()
+}
+
+func initIDs() {
+	availableIDs = make([]int, 101)
+	for i := 0; i <= 100; i++ {
+		availableIDs[i] = i
+	}
+	rng.Shuffle(len(availableIDs), func(i, j int) {
+		availableIDs[i], availableIDs[j] = availableIDs[j], availableIDs[i]
+	})
+}
+
 func newID() string {
-	return fmt.Sprintf("%016x", rand.Int63())
+	if len(availableIDs) == 0 {
+		initIDs() //reinicia quando acabar
+	}
+	id := availableIDs[0]
+	availableIDs = availableIDs[1:]
+	return fmt.Sprintf("%02d", id)
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	brokerListRaw := os.Getenv("BROKER_LIST") // "IP1:port,IP2:port"
 	sectorName    := os.Getenv("SECTOR_NAME")
 	dronePrefix   := os.Getenv("DRONE_ID") // prefixo opcional para o ID
@@ -80,7 +104,7 @@ func main() {
 	d.missionLoop()
 }
 
-// registro
+//registro
 func (d *Drone) register() {
 	msg := Message{
 		Type: MsgDroneRegister,
@@ -100,8 +124,8 @@ func (d *Drone) register() {
 	}
 }
 
-// Heartbeat
-// envia DRONE_HEARTBEAT a cada 10s
+//Heartbeat
+//envia DRONE_HEARTBEAT a cada 10s
 func (d *Drone) heartbeatLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -122,12 +146,12 @@ func (d *Drone) heartbeatLoop() {
 			},
 		}
 		if !d.send(msg) {
-			fmt.Printf("[%s] heartbeat falhou em todos os brokers\n", d.ID)
+			fmt.Printf("DRONE [%s] - heartbeat falhou em todos os brokers\n", d.ID)
 		}
 	}
 }
 
-// Loop de missões
+//Loop de missões
 func (d *Drone) missionLoop() {
 	for {
 		time.Sleep(time.Duration(rand.Intn(15)+10) * time.Second)
@@ -174,7 +198,7 @@ func (d *Drone) reportDone(missionID string) {
 	d.register()
 }
 
-// Envio com failover
+//Envio com failover
 func (d *Drone) send(msg Message) bool {
 	for i, addr := range d.Brokers {
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
