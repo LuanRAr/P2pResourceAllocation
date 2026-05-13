@@ -1,5 +1,13 @@
 package main
 
+//-------------sensor
+// Sensor autônomo que gera alertas aleatórios e os envia ao broker.
+// Cada alerta carrega um campo Priority calculado a partir do Value:
+//   Value > 95 → Priority 3 (crítico)
+//   Value > 85 → Priority 2 (alto)
+//   Value > 70 → Priority 1 (médio)  ← limiar mínimo de envio
+// O broker usa esse campo para ordenar a fila de despacho de drones.
+
 import (
 	"encoding/json"
 	"fmt"
@@ -26,11 +34,15 @@ type AlertPayload struct {
 	AlertType string    `json:"alert_type"`
 	Value     float64   `json:"value"`
 	Timestamp time.Time `json:"timestamp"`
+
+	// Priority calculado no momento da emissão (1=médio, 2=alto, 3=crítico).
+	// Quanto maior, mais urgente o atendimento pelo broker.
+	Priority int `json:"priority"`
 }
 
-//IDs únicos de 00 a 100
+//-------------geração de IDs únicos de 00 a 100
 var (
-	rng         *rand.Rand
+	rng          *rand.Rand
 	availableIDs []int
 )
 
@@ -51,28 +63,39 @@ func initIDs() {
 
 func newID() string {
 	if len(availableIDs) == 0 {
-		initIDs() //reinicia quando acabar
+		initIDs() // reinicia quando acabar
 	}
 	id := availableIDs[0]
 	availableIDs = availableIDs[1:]
 	return fmt.Sprintf("%02d", id)
 }
 
-// main
+//-------------cálculo de prioridade
+// Converte o valor numérico do sensor em nível discreto de urgência.
+// Regra alinhada com o campo Priority do broker:
+//   > 95 → 3 (crítico)
+//   > 85 → 2 (alto)
+//   > 70 → 1 (médio)
+func calcPriority(value float64) int {
+	switch {
+	case value > 95:
+		return 3
+	case value > 85:
+		return 2
+	default:
+		return 1
+	}
+}
+
+//-------------main
 func main() {
 	brokerListRaw := os.Getenv("BROKER_LIST")
-	sectorName := os.Getenv("SECTOR_NAME")
-	sensorType := os.Getenv("SENSOR_TYPE")
+	sectorName    := os.Getenv("SECTOR_NAME")
+	sensorType    := os.Getenv("SENSOR_TYPE")
 
-	if brokerListRaw == "" {
-		brokerListRaw = "localhost:5000"
-	}
-	if sectorName == "" {
-		sectorName = "Desconhecido"
-	}
-	if sensorType == "" {
-		sensorType = "Generico"
-	}
+	if brokerListRaw == "" { brokerListRaw = "localhost:5000" }
+	if sectorName == ""    { sectorName = "Desconhecido" }
+	if sensorType == ""    { sensorType = "Generico" }
 
 	var brokers []string
 	for _, b := range strings.Split(brokerListRaw, ",") {
@@ -89,7 +112,7 @@ func main() {
 
 		value := rng.Float64() * 100
 		if value <= 70 {
-			continue //só alerta para valores críticos
+			continue // só alerta para valores críticos (> 70)
 		}
 
 		alert := AlertPayload{
@@ -99,13 +122,18 @@ func main() {
 			AlertType: sensorType,
 			Value:     value,
 			Timestamp: time.Now(),
+			Priority:  calcPriority(value), // define urgência antes do envio
 		}
+
+		fmt.Printf("[%s] gerando alerta %s | valor=%.2f | prioridade=%d\n",
+			sensorID, alert.AlertID, alert.Value, alert.Priority)
 
 		sendWithFallback(brokers, alert, sensorID)
 	}
 }
 
-//tenta cada broker da lista em ordem até conseguir enviar.
+//-------------envio com fallover
+// Tenta cada broker da lista em ordem até conseguir enviar.
 func sendWithFallback(brokers []string, alert AlertPayload, sensorID string) {
 	msg := Message{Type: MsgAlert, Payload: alert}
 
@@ -129,8 +157,8 @@ func sendWithFallback(brokers []string, alert AlertPayload, sensorID string) {
 		if i > 0 {
 			label = fmt.Sprintf("fallback[%d]", i)
 		}
-		fmt.Printf("[%s] alerta %s → %s (%s) | valor=%.2f\n",
-			sensorID, alert.AlertID, addr, label, alert.Value)
+		fmt.Printf("[%s] alerta %s → %s (%s) | valor=%.2f prioridade=%d\n",
+			sensorID, alert.AlertID, addr, label, alert.Value, alert.Priority)
 		return
 	}
 

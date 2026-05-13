@@ -154,7 +154,7 @@ func (d *Drone) heartbeatLoop() {
 //Loop de missões
 func (d *Drone) missionLoop() {
 	for {
-		time.Sleep(time.Duration(rand.Intn(15)+10) * time.Second)
+		time.Sleep(time.Duration(rand.Intn(7)+10) * time.Second)
 
 		d.mu.Lock()
 		status    := d.status
