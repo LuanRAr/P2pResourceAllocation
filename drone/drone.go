@@ -17,6 +17,7 @@ const (
 	MsgDroneRegister  MessageType = "DRONE_REGISTER"
 	MsgDroneHeartbeat MessageType = "DRONE_HEARTBEAT"
 	MsgDroneDone      MessageType = "DRONE_DONE"
+	MsgDroneDispatch  MessageType = "DRONE_DISPATCH" // broker → drone: ordem de missão
 )
 
 type Message struct {
@@ -27,25 +28,38 @@ type Message struct {
 type DronePayload struct {
 	DroneID   string    `json:"drone_id"`
 	Sector    string    `json:"sector"`
-	Status    string    `json:"status"` 
+	Status    string    `json:"status"`
 	MissionID string    `json:"mission_id,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	// Addr é enviado no DRONE_REGISTER e no DRONE_HEARTBEAT pra q qualquer broker que receber a mensagem saiba onde alcançar este drone.
+	Addr string `json:"addr,omitempty"`
+}
+
+//DispatchPayload espelha o struct do broker.
+type DispatchPayload struct {
+	DroneID   string    `json:"drone_id"`
+	MissionID string    `json:"mission_id"`
+	Sector    string    `json:"sector"`
+	AlertType string    `json:"alert_type"`
+	Priority  int       `json:"priority"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-//Drone guarda o próprio estado e a lista de brokers conhecidos
+// Drone guarda o próprio estado e a lista de brokers conhecidos.
 type Drone struct {
 	ID      string
 	Sector  string
-	Brokers []string
+	Addr    string   // IP:porta onde este drone escuta ordens (MY_IP:DRONE_PORT)
+	Brokers []string // todos os brokers conhecidos
 
 	mu        sync.Mutex
 	status    string
 	missionID string
 }
 
-//IDs únicos de 00 a 100
+// IDs únicos de 00 a 100
 var (
-	rng         *rand.Rand
+	rng          *rand.Rand
 	availableIDs []int
 )
 
@@ -66,7 +80,7 @@ func initIDs() {
 
 func newID() string {
 	if len(availableIDs) == 0 {
-		initIDs() //reinicia quando acabar
+		initIDs()
 	}
 	id := availableIDs[0]
 	availableIDs = availableIDs[1:]
@@ -74,13 +88,17 @@ func newID() string {
 }
 
 func main() {
-	brokerListRaw := os.Getenv("BROKER_LIST") //IP1:port,IP2:port
+	brokerListRaw := os.Getenv("BROKER_LIST")
 	sectorName    := os.Getenv("SECTOR_NAME")
-	dronePrefix   := os.Getenv("DRONE_ID") //prefixo para o ID
+	dronePrefix   := os.Getenv("DRONE_ID")
+	myIP          := os.Getenv("MY_IP")
+	dronePort     := os.Getenv("DRONE_PORT")
 
 	if brokerListRaw == "" { brokerListRaw = "localhost:5000" }
 	if sectorName == ""    { sectorName = "Desconhecido" }
 	if dronePrefix == ""   { dronePrefix = "DRONE" }
+	if myIP == ""          { myIP = "127.0.0.1" }
+	if dronePort == ""     { dronePort = "6000" }
 
 	var brokers []string
 	for _, b := range strings.Split(brokerListRaw, ",") {
@@ -92,40 +110,123 @@ func main() {
 	d := &Drone{
 		ID:      fmt.Sprintf("%s-%s", dronePrefix, newID()),
 		Sector:  sectorName,
+		Addr:    fmt.Sprintf("%s:%s", myIP, dronePort),
 		Brokers: brokers,
 		status:  "AVAILABLE",
 	}
 
-	fmt.Printf("[%s] iniciado | setor=%s | brokers=%v\n", d.ID, d.Sector, d.Brokers)
+	fmt.Printf("[%s] iniciado | setor=%s | addr=%s | brokers=%v\n",
+		d.ID, d.Sector, d.Addr, d.Brokers)
 
-	d.register()
+	//Inicia o servidor TCP antes do registro para garantir que o broker já consiga alcançar o drone quando receber o DRONE_REGISTER.
+	go d.serveDispatches(dronePort)
+
+	// Registra em TODOS os brokers da lista para que qualquer um que receba um alerta já saiba o endereço deste drone
+	d.registerAll()
 
 	go d.heartbeatLoop()
 	d.missionLoop()
 }
 
-//registro
-func (d *Drone) register() {
-	msg := Message{
-		Type: MsgDroneRegister,
-		Payload: DronePayload{
-			DroneID:   d.ID,
-			Sector:    d.Sector,
-			Status:    "AVAILABLE",
-			Timestamp: time.Now(),
-		},
+//-------------registro em todos os brokers
+//envia o DRONE_REGISTER para cada broker da lista independentemente
+func (d *Drone) registerAll() {
+	payload := DronePayload{
+		DroneID:   d.ID,
+		Sector:    d.Sector,
+		Status:    "AVAILABLE",
+		Addr:      d.Addr,
+		Timestamp: time.Now(),
 	}
-	for {
-		if d.send(msg) {
-			return
+	msg := Message{Type: MsgDroneRegister, Payload: payload}
+
+	atLeastOne := false
+	for _, addr := range d.Brokers {
+		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+		if err != nil {
+			fmt.Printf("[%s] registro: broker %s inacessível\n", d.ID, addr)
+			continue
 		}
-		fmt.Printf("[%s] nenhum broker acessível para registro, aguardando 5s...\n", d.ID)
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		if err := json.NewEncoder(conn).Encode(msg); err != nil {
+			fmt.Printf("[%s] registro: erro ao enviar para %s: %v\n", d.ID, addr, err)
+			conn.Close()
+			continue
+		}
+		conn.Close()
+		fmt.Printf("[%s] registrado em %s\n", d.ID, addr)
+		atLeastOne = true
+	}
+
+	if !atLeastOne {
+		fmt.Printf("[%s] nenhum broker acessível, tentando novamente em 5s...\n", d.ID)
 		time.Sleep(5 * time.Second)
+		d.registerAll()
 	}
 }
 
-//Heartbeat
-//envia DRONE_HEARTBEAT a cada 10s
+//-------------servidor TCP: recebe ordens do broker
+// O drone escuta na DRONE_PORT, esperando DRONE_DISPATCHs do broker
+func (d *Drone) serveDispatches(port string) {
+	ln, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		fmt.Printf("[%s] erro ao abrir porta de despacho %s: %v\n", d.ID, port, err)
+		return
+	}
+	fmt.Printf("[%s] aguardando ordens na porta %s\n", d.ID, port)
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			continue
+		}
+		go d.handleDispatch(conn)
+	}
+}
+
+func (d *Drone) handleDispatch(conn net.Conn) {
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(conn).Decode(&raw); err != nil {
+		return
+	}
+
+	var msgType MessageType
+	if err := json.Unmarshal(raw["type"], &msgType); err != nil {
+		return
+	}
+	if msgType != MsgDroneDispatch {
+		return
+	}
+
+	var p DispatchPayload
+	if err := json.Unmarshal(raw["payload"], &p); err != nil {
+		return
+	}
+
+	if p.DroneID != d.ID {
+		fmt.Printf("[%s] ordem recebida para drone errado (%s) — ignorando\n", d.ID, p.DroneID)
+		return
+	}
+
+	d.mu.Lock()
+	if d.status == "IN_MISSION" {
+		fmt.Printf("[%s] já em missão %s — ordem para %s descartada\n",
+			d.ID, d.missionID, p.MissionID)
+		d.mu.Unlock()
+		return
+	}
+	d.status    = "IN_MISSION"
+	d.missionID = p.MissionID
+	d.mu.Unlock()
+
+	fmt.Printf("[%s] MISSÃO RECEBIDA | id=%s | setor=%s | tipo=%s | prioridade=%d\n",
+		d.ID, p.MissionID, p.Sector, p.AlertType, p.Priority)
+}
+
+//-------------heartbeat: envia para TODOS os brokers
+// heartbeat é enviado para todos os brokers vivos. Assim cada broker mantém o de qual deles detém o token no momento.
 func (d *Drone) heartbeatLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -142,16 +243,30 @@ func (d *Drone) heartbeatLoop() {
 				Sector:    d.Sector,
 				Status:    status,
 				MissionID: missionID,
+				Addr:      d.Addr,
 				Timestamp: time.Now(),
 			},
 		}
-		if !d.send(msg) {
-			fmt.Printf("DRONE [%s] - heartbeat falhou em todos os brokers\n", d.ID)
+
+		sent := 0
+		for _, addr := range d.Brokers {
+			conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+			if err != nil {
+				continue
+			}
+			conn.SetDeadline(time.Now().Add(5 * time.Second))
+			if json.NewEncoder(conn).Encode(msg) == nil {
+				sent++
+			}
+			conn.Close()
+		}
+		if sent == 0 {
+			fmt.Printf("[%s] heartbeat falhou em todos os brokers\n", d.ID)
 		}
 	}
 }
 
-//Loop de missões
+//-------------loop de missões
 func (d *Drone) missionLoop() {
 	for {
 		time.Sleep(time.Duration(rand.Intn(7)+10) * time.Second)
@@ -173,6 +288,7 @@ func (d *Drone) missionLoop() {
 	}
 }
 
+//-------------conclusão de missão
 func (d *Drone) reportDone(missionID string) {
 	msg := Message{
 		Type: MsgDroneDone,
@@ -181,6 +297,7 @@ func (d *Drone) reportDone(missionID string) {
 			Sector:    d.Sector,
 			Status:    "AVAILABLE",
 			MissionID: missionID,
+			Addr:      d.Addr,
 			Timestamp: time.Now(),
 		},
 	}
@@ -194,11 +311,16 @@ func (d *Drone) reportDone(missionID string) {
 		return
 	}
 
-	fmt.Printf("[%s] broker inacessível após missão — buscando broker alternativo\n", d.ID)
-	d.register()
+	fmt.Printf("[%s] broker inacessível após missão — re-registrando em todos\n", d.ID)
+	d.mu.Lock()
+	d.status    = "AVAILABLE"
+	d.missionID = ""
+	d.mu.Unlock()
+	d.registerAll()
 }
 
-//Envio com failover
+//-------------envio com failover (para ao primeiro sucesso)
+//mensagens p2p como DRONE_DONE onde qualquer broker que receba é suficiente
 func (d *Drone) send(msg Message) bool {
 	for i, addr := range d.Brokers {
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)

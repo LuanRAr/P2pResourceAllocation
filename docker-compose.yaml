@@ -1,5 +1,10 @@
 services:
 
+  # ─── Brokers ────────────────────────────────────────────────────────────────
+  # RING_ADDRS define a ordem do anel Token Ring.
+  # O PRIMEIRO endereço da lista é o nó que gera o token na inicialização.
+  # A ordem deve ser IDÊNTICA em todos os brokers para o anel ser consistente.
+
   broker-norte:
     build:
       context: .
@@ -9,9 +14,9 @@ services:
     environment:
       - SECTOR_NAME=Norte
       - PORT=5000
-      - PEER_BROKERS=172.20.0.3:5000,172.20.0.4:5000
-      - PEER_MAP=Sul=172.20.0.3:5000,Leste=172.20.0.4:5000
       - MY_IP=172.20.0.2
+      # Anel: Norte → Sul → Leste → (volta para Norte)
+      - RING_ADDRS=172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000
     networks:
       ormuz_net:
         ipv4_address: 172.20.0.2
@@ -26,9 +31,8 @@ services:
     environment:
       - SECTOR_NAME=Sul
       - PORT=5000
-      - PEER_BROKERS=172.20.0.2:5000,172.20.0.4:5000
-      - PEER_MAP=Norte=172.20.0.2:5000,Leste=172.20.0.4:5000
       - MY_IP=172.20.0.3
+      - RING_ADDRS=172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000
     networks:
       ormuz_net:
         ipv4_address: 172.20.0.3
@@ -43,17 +47,14 @@ services:
     environment:
       - SECTOR_NAME=Leste
       - PORT=5000
-      - PEER_BROKERS=172.20.0.2:5000,172.20.0.3:5000
-      - PEER_MAP=Norte=172.20.0.2:5000,Sul=172.20.0.3:5000
       - MY_IP=172.20.0.4
+      - RING_ADDRS=172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000
     networks:
       ormuz_net:
         ipv4_address: 172.20.0.4
     restart: unless-stopped
 
-  # ─────────────────────────────────────────────
-  # SENSORES
-  # ─────────────────────────────────────────────
+  # ─── Sensores ───────────────────────────────────────────────────────────────
 
   sensor-norte-radar:
     build:
@@ -61,7 +62,7 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_norte_radar
-    depends_on: [broker-norte, broker-sul]
+    depends_on: [broker-norte]
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Radar
@@ -76,7 +77,7 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_sul_naval
-    depends_on: [broker-sul, broker-norte]
+    depends_on: [broker-sul]
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=NavalSensor
@@ -91,7 +92,7 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_leste_boia
-    depends_on: [broker-leste, broker-norte]
+    depends_on: [broker-leste]
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Boia
@@ -100,13 +101,13 @@ services:
       - ormuz_net
     restart: unless-stopped
 
-  # ─────────────────────────────────────────────
-  # DRONES
-  # MY_IP: necessário para que o broker saiba o
-  # endereço onde enviar DRONE_DISPATCH.
-  # DRONE_PORT: porta onde o drone escuta comandos.
-  # BROKER_LIST: todos os brokers — frota compartilhada.
-  # ─────────────────────────────────────────────
+  # ─── Drones ─────────────────────────────────────────────────────────────────
+  # MY_IP    : IP fixo do contêiner — informado ao broker no DRONE_REGISTER
+  #            para que o broker saiba onde enviar DRONE_DISPATCH.
+  # DRONE_PORT: porta onde o drone escuta ordens (deve ser exposta na rede).
+  # DRONE_ID : prefixo do ID; cada contêiner tem prefixo ÚNICO para evitar
+  #            colisão de nomes no mapa de drones do broker.
+  # BROKER_LIST: todos os brokers — frota é compartilhada entre setores.
 
   drone-norte-01:
     build:
@@ -114,10 +115,10 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_01
-    depends_on: [broker-norte, broker-sul, broker-leste]
+    depends_on: [broker-norte]
     environment:
       - SECTOR_NAME=Norte
-      - DRONE_ID=DRONE-NORTE
+      - DRONE_ID=DRONE-NORTE-A
       - DRONE_PORT=6000
       - MY_IP=172.20.0.10
       - BROKER_LIST=172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000
@@ -132,10 +133,10 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_02
-    depends_on: [broker-norte, broker-sul, broker-leste]
+    depends_on: [broker-norte]
     environment:
       - SECTOR_NAME=Norte
-      - DRONE_ID=DRONE-NORTE
+      - DRONE_ID=DRONE-NORTE-B
       - DRONE_PORT=6000
       - MY_IP=172.20.0.11
       - BROKER_LIST=172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000
@@ -150,10 +151,10 @@ services:
       args:
         TARGET: drone
     container_name: drone_sul_01
-    depends_on: [broker-sul, broker-norte, broker-leste]
+    depends_on: [broker-sul]
     environment:
       - SECTOR_NAME=Sul
-      - DRONE_ID=DRONE-SUL
+      - DRONE_ID=DRONE-SUL-A
       - DRONE_PORT=6000
       - MY_IP=172.20.0.12
       - BROKER_LIST=172.20.0.3:5000,172.20.0.2:5000,172.20.0.4:5000
@@ -168,10 +169,10 @@ services:
       args:
         TARGET: drone
     container_name: drone_leste_01
-    depends_on: [broker-leste, broker-norte, broker-sul]
+    depends_on: [broker-leste]
     environment:
       - SECTOR_NAME=Leste
-      - DRONE_ID=DRONE-LESTE
+      - DRONE_ID=DRONE-LESTE-A
       - DRONE_PORT=6000
       - MY_IP=172.20.0.13
       - BROKER_LIST=172.20.0.4:5000,172.20.0.2:5000,172.20.0.3:5000
