@@ -1,13 +1,5 @@
 package main
 
-//-------------sensor
-// Sensor autônomo que gera alertas aleatórios e os envia ao broker.
-// Cada alerta carrega um campo Priority calculado a partir do Value:
-//   Value > 95 → Priority 3 (crítico)
-//   Value > 85 → Priority 2 (alto)
-//   Value > 70 → Priority 1 (médio)  ← limiar mínimo de envio
-// O broker usa esse campo para ordenar a fila de despacho de drones.
-
 import (
 	"encoding/json"
 	"fmt"
@@ -35,8 +27,7 @@ type AlertPayload struct {
 	Value     float64   `json:"value"`
 	Timestamp time.Time `json:"timestamp"`
 
-	// Priority calculado no momento da emissão (1=médio, 2=alto, 3=crítico).
-	// Quanto maior, mais urgente o atendimento pelo broker.
+	//Priority calculado no momento da emissão (1=médio, 2=alto, 3=crítico).
 	Priority int `json:"priority"`
 }
 
@@ -71,11 +62,7 @@ func newID() string {
 }
 
 //-------------cálculo de prioridade
-// Converte o valor numérico do sensor em nível discreto de urgência.
-// Regra alinhada com o campo Priority do broker:
-//   > 95 → 3 (crítico)
-//   > 85 → 2 (alto)
-//   > 70 → 1 (médio)
+//Converte o valor numérico do sensor em nível discreto de urgência.
 func calcPriority(value float64) int {
 	switch {
 	case value > 95:
@@ -122,7 +109,7 @@ func main() {
 			AlertType: sensorType,
 			Value:     value,
 			Timestamp: time.Now(),
-			Priority:  calcPriority(value), // define urgência antes do envio
+			Priority:  calcPriority(value),
 		}
 
 		fmt.Printf("[%s] gerando alerta %s | valor=%.2f | prioridade=%d\n",
@@ -133,7 +120,7 @@ func main() {
 }
 
 //-------------envio com fallover
-// Tenta cada broker da lista em ordem até conseguir enviar.
+//Tenta cada broker da lista em ordem até conseguir enviar.
 func sendWithFallback(brokers []string, alert AlertPayload, sensorID string) {
 	msg := Message{Type: MsgAlert, Payload: alert}
 

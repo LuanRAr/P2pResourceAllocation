@@ -74,9 +74,9 @@ func newID() string {
 }
 
 func main() {
-	brokerListRaw := os.Getenv("BROKER_LIST") // "IP1:port,IP2:port"
+	brokerListRaw := os.Getenv("BROKER_LIST") //IP1:port,IP2:port
 	sectorName    := os.Getenv("SECTOR_NAME")
-	dronePrefix   := os.Getenv("DRONE_ID") // prefixo opcional para o ID
+	dronePrefix   := os.Getenv("DRONE_ID") //prefixo para o ID
 
 	if brokerListRaw == "" { brokerListRaw = "localhost:5000" }
 	if sectorName == ""    { sectorName = "Desconhecido" }

@@ -1,12 +1,5 @@
 services:
 
-  # ─────────────────────────────────────────────
-  # BROKERS
-  # PEER_MAP: mapeamento Nome=ip:porta para que o
-  # algoritmo de Maekawa saiba o endereço de cada
-  # broker pelo nome recebido nos payloads.
-  # ─────────────────────────────────────────────
-
   broker-norte:
     build:
       context: .
