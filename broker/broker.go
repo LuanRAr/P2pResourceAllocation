@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-//-------------tipos de mensagem
+// -------------tipos de mensagem
 type MessageType string
 
 const (
@@ -20,18 +20,16 @@ const (
 	MsgDroneHeartbeat MessageType = "DRONE_HEARTBEAT"
 	MsgDroneDone      MessageType = "DRONE_DONE"
 
-
-	MsgPeerPing       MessageType = "PEER_PING"       //broker → broker: sinal de vida
+	MsgPeerPing        MessageType = "PEER_PING"        //broker → broker: sinal de vida
 	MsgCoberturaSector MessageType = "Cobertura_SECTOR" //broker → broker: aviso de cobertura
 
-
-	MsgToken          MessageType = "TOKEN"           //passagem do token
-	MsgTokenRequest   MessageType = "TOKEN_REQUEST"   //broker requisita regeneração do token
-	MsgStateUpdate    MessageType = "STATE_UPDATE"    //broker → peers: réplica do estado global
-	MsgDroneDispatch  MessageType = "DRONE_DISPATCH"  //broker → drone: ordem de missão
+	MsgToken         MessageType = "TOKEN"          //passagem do token
+	MsgTokenRequest  MessageType = "TOKEN_REQUEST"  //broker requisita regeneração do token
+	MsgStateUpdate   MessageType = "STATE_UPDATE"   //broker → peers: réplica do estado global
+	MsgDroneDispatch MessageType = "DRONE_DISPATCH" //broker → drone: ordem de missão
 )
 
-//-------------estruturas de mensagem
+// -------------estruturas de mensagem
 type Message struct {
 	Type    MessageType `json:"type"`
 	Payload interface{} `json:"payload"`
@@ -44,18 +42,18 @@ type AlertPayload struct {
 	AlertType string    `json:"alert_type"`
 	Value     float64   `json:"value"`
 	Timestamp time.Time `json:"timestamp"`
-	Priority int `json:"priority"`
+	Priority  int       `json:"priority"`
 }
 
-//-------------ordenação da fila de alertas por prioridade + timestamp
+// -------------ordenação da fila de alertas por prioridade + timestamp
 type AlertQueue []AlertPayload
 
-func (q AlertQueue) Len() int{
-	return len(q) 
+func (q AlertQueue) Len() int {
+	return len(q)
 }
 
-func (q AlertQueue) Swap(i, j int){ 
-	q[i], q[j] = q[j], q[i] 
+func (q AlertQueue) Swap(i, j int) {
+	q[i], q[j] = q[j], q[i]
 }
 
 func (q AlertQueue) Less(i, j int) bool {
@@ -72,22 +70,21 @@ type DronePayload struct {
 	MissionID string    `json:"mission_id,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 	//Addr é preenchido no DRONE_REGISTER para que o broker saiba onde abrir conexão TCP de volta ao drone (IP:DRONE_PORT).
-	Addr      string    `json:"addr,omitempty"`
+	Addr string `json:"addr,omitempty"`
 }
 
 // DispatchPayload é a mensagem enviada diretamente do broker ao drone para iniciá-lo em uma missão específica
 type DispatchPayload struct {
 	DroneID   string    `json:"drone_id"`
 	MissionID string    `json:"mission_id"`
-	Sector    string    `json:"sector"`    // setor da ocorrência
+	Sector    string    `json:"sector"` // setor da ocorrência
 	AlertType string    `json:"alert_type"`
 	Priority  int       `json:"priority"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-//carrega o estado global compartilhado pelo anel
+// carrega o estado global compartilhado pelo anel
 type TokenPayload struct {
-	
 	PendingAlerts []AlertPayload `json:"pending_alerts"` //fila global de alertas ainda sem drone atribuído
 
 	Assigned map[string]string `json:"assigned"` //mapa de alert_id → drone_id para alertas já atribuídos
@@ -99,21 +96,21 @@ type TokenPayload struct {
 	Round uint64 `json:"round"`
 }
 
-//-------------estado do drone
+// -------------estado do drone
 type DroneState struct {
 	DroneID   string
-	Sector    string    // setor base do drone (para preferência geográfica)
-	Addr      string    // IP:porta onde o drone escuta DRONE_DISPATCH
-	Status    string    //AVAILABLE, IN_MISSION, FAILED
+	Sector    string //setor base do drone (para preferência geográfica)
+	Addr      string //IP:porta onde o drone escuta DRONE_DISPATCH
+	Status    string //AVAILABLE, IN_MISSION, FAILED
 	MissionID string
 	LastSeen  time.Time
 }
 
-//-------------broker
+// -------------broker
 type Broker struct {
-	Name    string
-	Port    string
-	MyAddr  string   //IP:porta deste broker (para o ping)
+	Name      string
+	Port      string
+	MyAddr    string   //IP:porta deste broker (para o ping)
 	RingAddrs []string //todos os endereços do anel, em ordem
 
 	//estado local dos drones registrados neste broker
@@ -129,9 +126,9 @@ type Broker struct {
 	orphanAlerts []AlertPayload
 
 	//token ring
-	tokenMu            sync.Mutex
-	hasToken           bool
-	tokenData          TokenPayload //última versão conhecida do token
+	tokenMu         sync.Mutex
+	hasToken        bool
+	tokenData       TokenPayload //última versão conhecida do token
 	backupTokenData TokenPayload //backup replicado via broadcast dos peers
 
 	//guarda o estado dos outros brokers do sistema
@@ -166,14 +163,16 @@ func NewBroker(name, port, myAddr string, ring []string) *Broker {
 	return b
 }
 
-//-------------main
+// -------------main
 func main() {
-	name     := os.Getenv("SECTOR_NAME")
-	port     := os.Getenv("PORT")
-	myIP     := os.Getenv("MY_IP")
-	ringRaw  := os.Getenv("RING_ADDRS") //anel completo em ordem: "IP1:5000,IP2:5000,IP3:5000"
+	name := os.Getenv("SECTOR_NAME")
+	port := os.Getenv("PORT")
+	myIP := os.Getenv("MY_IP")
+	ringRaw := os.Getenv("RING_ADDRS") //anel completo em ordem: "IP1:5000,IP2:5000,IP3:5000"
 
-	if port == "" { port = "5000" }
+	if port == "" {
+		port = "5000"
+	}
 	myAddr := fmt.Sprintf("%s:%s", myIP, port)
 
 	var ring []string
@@ -186,9 +185,9 @@ func main() {
 	b := NewBroker(name, port, myAddr, ring)
 	fmt.Printf("=== Broker [%s] | addr=%s | anel=%v ===\n", name, myAddr, ring)
 
-	go b.watchDroneHeartbeats() // detecta drones mortos
-	go b.peerHeartbeats()  // detecta brokers vizinhos mortos + envia ping
-	go b.tokenTimeoutGuard()    // regenera token se ficar perdido
+	go b.watchDroneHeartbeats() //detecta drones mortos
+	go b.peerHeartbeats()       //detecta brokers vizinhos mortos + envia ping
+	go b.tokenTimeoutGuard()    //regenera token se ficar perdido
 
 	//Apenas o primeiro nó do anel inicia com o token
 	if len(ring) > 0 && ring[0] == myAddr {
@@ -214,7 +213,7 @@ func main() {
 	}
 }
 
-//-------------recepção de mensagens
+// -------------recepção de mensagens
 func (b *Broker) handle(conn net.Conn) {
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -312,7 +311,7 @@ func (b *Broker) handle(conn net.Conn) {
 	}
 }
 
-//-------------alerta: enfileira localmente e acorda o loop do token
+// -------------alerta: enfileira localmente e acorda o loop do token
 func (b *Broker) handleAlert(p AlertPayload) {
 	fmt.Printf("[%s] alerta recebido | id=%s sensor=%s tipo=%s valor=%.2f\n",
 		b.Name, p.AlertID, p.SensorID, p.AlertType, p.Value)
@@ -328,17 +327,21 @@ func (b *Broker) handleAlert(p AlertPayload) {
 	}
 }
 
-//-------------gestão de drones
+// -------------gestão de drones
 func (b *Broker) handleDroneRegister(p DronePayload) {
 	b.dronesMu.Lock()
 	defer b.dronesMu.Unlock()
 
 	if existing, ok := b.drones[p.DroneID]; ok {
-		existing.Status   = "AVAILABLE"
+		existing.Status = "AVAILABLE"
 		existing.LastSeen = time.Now()
 		// Atualiza endereço caso o drone tenha reiniciado em IP diferente
-		if p.Addr != "" { existing.Addr = p.Addr }
-		if p.Sector != "" { existing.Sector = p.Sector }
+		if p.Addr != "" {
+			existing.Addr = p.Addr
+		}
+		if p.Sector != "" {
+			existing.Sector = p.Sector
+		}
 		fmt.Printf("[%s] drone %s re-registrado | addr=%s\n", b.Name, p.DroneID, existing.Addr)
 	} else {
 		b.drones[p.DroneID] = &DroneState{
@@ -357,10 +360,12 @@ func (b *Broker) handleDroneHeartbeat(p DronePayload) {
 	defer b.dronesMu.Unlock()
 
 	if d, ok := b.drones[p.DroneID]; ok {
-		d.LastSeen  = time.Now()
-		d.Status    = p.Status
+		d.LastSeen = time.Now()
+		d.Status = p.Status
 		d.MissionID = p.MissionID
-		if p.Addr != "" { d.Addr = p.Addr }
+		if p.Addr != "" {
+			d.Addr = p.Addr
+		}
 	} else {
 		// Drone adotado (broker original caiu)
 		b.drones[p.DroneID] = &DroneState{
@@ -382,13 +387,13 @@ func (b *Broker) handleDroneDone(p DronePayload) {
 	if d, ok := b.drones[p.DroneID]; ok {
 		fmt.Printf("[%s] drone %s concluiu missão %s → disponível\n",
 			b.Name, p.DroneID, d.MissionID)
-		d.Status    = "AVAILABLE"
+		d.Status = "AVAILABLE"
 		d.MissionID = ""
 	}
 }
 
-//-------------token ring: recebimento
-//broker atualiza seu estado local com as informações do token, absorve os alertas locais pendentes na fila global e inicia envio de drones
+// -------------token ring: recebimento
+// broker atualiza seu estado local com as informações do token, absorve os alertas locais pendentes na fila global e inicia envio de drones
 func (b *Broker) receberToken(p TokenPayload) {
 	b.tokenMu.Lock()
 	defer b.tokenMu.Unlock()
@@ -402,14 +407,14 @@ func (b *Broker) receberToken(p TokenPayload) {
 	fmt.Printf("[%s] token recebido | round=%d | pendentes=%d\n",
 		b.Name, p.Round, len(p.PendingAlerts))
 
-	b.hasToken  = true
+	b.hasToken = true
 	b.tokenData = p
 
 	go b.tokenLoop()
 }
 
-//-------------token ring: loop de processamento
-//Enquanto o broker tiver o token.
+// -------------token ring: loop de processamento
+// Enquanto o broker tiver o token.
 func (b *Broker) tokenLoop() {
 	// Pequena espera inicial para absorver alertas que chegam em rajada
 	time.Sleep(200 * time.Millisecond)
@@ -542,13 +547,13 @@ process:
 		//marca o drone como em missão localmente e no token
 		b.dronesMu.Lock()
 		if d, ok := b.drones[droneID]; ok {
-			d.Status    = "IN_MISSION"
+			d.Status = "IN_MISSION"
 			d.MissionID = alert.AlertID
 		}
 		b.dronesMu.Unlock()
 
 		b.tokenData.Assigned[alert.AlertID] = droneID
-		b.tokenData.DroneStatus[droneID]    = "IN_MISSION"
+		b.tokenData.DroneStatus[droneID] = "IN_MISSION"
 
 		fmt.Printf("[%s] TOKEN → drone %s reservado para alerta %s (setor=%s prioridade=%d)\n",
 			b.Name, droneID, alert.AlertID, alert.Sector, alert.Priority)
@@ -561,7 +566,7 @@ process:
 				// Despacho falhou: desfaz reserva para que o próximo round realoque
 				b.dronesMu.Lock()
 				if d, ok := b.drones[droneCopy]; ok {
-					d.Status    = "AVAILABLE"
+					d.Status = "AVAILABLE"
 					d.MissionID = ""
 				}
 				b.dronesMu.Unlock()
@@ -593,10 +598,10 @@ process:
 	b.passToken(tokenSnapshot)
 }
 
-//-------------replicação de estado via broadcast
-//envia uma cópia do TokenPayload atual para todos os peers vivos do anel
+// -------------replicação de estado via broadcast
+// envia uma cópia do TokenPayload atual para todos os peers vivos do anel
 func (b *Broker) broadcastState(data TokenPayload) {
-	// Descobre o próximo nó vivo (mesmo critério do passToken) para excluí-lo.
+	//Descobre o próximo nó vivo para excluí-lo
 	nextToken := b.nextAliveAddr()
 
 	msg := Message{Type: MsgStateUpdate, Payload: data}
@@ -625,7 +630,7 @@ func (b *Broker) broadcastState(data TokenPayload) {
 	}
 }
 
-//retorna o endereço do próximo nó vivo no anel a partir deste broker.
+// retorna o endereço do próximo nó vivo no anel a partir deste broker.
 func (b *Broker) nextAliveAddr() string {
 	myIdx := -1
 	for i, addr := range b.RingAddrs {
@@ -649,7 +654,7 @@ func (b *Broker) nextAliveAddr() string {
 	return ""
 }
 
-//-------------token ring: escolha de drone disponível com preferência de setor
+// -------------token ring: escolha de drone disponível com preferência de setor
 func (b *Broker) droneDisp(alertSector string) string {
 	b.dronesMu.Lock()
 	defer b.dronesMu.Unlock()
@@ -669,8 +674,8 @@ func (b *Broker) droneDisp(alertSector string) string {
 	return ""
 }
 
-//-------------despacho TCP direto ao drone
-//após reservar o drone no token, o broker abre uma conexão TCP com o drone e envia enviaDrone com o ID da missão.
+// -------------despacho TCP direto ao drone
+// após reservar o drone no token, o broker abre uma conexão TCP com o drone e envia enviaDrone com o ID da missão.
 func (b *Broker) enviaDrone(droneID string, alert AlertPayload) bool {
 	b.dronesMu.Lock()
 	d, ok := b.drones[droneID]
@@ -718,8 +723,8 @@ func (b *Broker) enviaDrone(droneID string, alert AlertPayload) bool {
 	return true
 }
 
-//-------------token ring: limpeza de atribuições antigas
-//Remove do mapa assigned os alertas cujo drone já voltou para AVAILABLE
+// -------------token ring: limpeza de atribuições antigas
+// Remove do mapa assigned os alertas cujo drone já voltou para AVAILABLE
 func (b *Broker) cleanAssigned() {
 	for alertID, droneID := range b.tokenData.Assigned {
 		if status, ok := b.tokenData.DroneStatus[droneID]; ok {
@@ -730,7 +735,7 @@ func (b *Broker) cleanAssigned() {
 	}
 }
 
-//-------------token ring: passagem do token com bypass de nó morto
+// -------------token ring: passagem do token com bypass de nó morto
 // Percorre o anel a partir do próximo nó em relação a este broker
 func (b *Broker) passToken(data TokenPayload) {
 	myIdx := -1
@@ -747,7 +752,7 @@ func (b *Broker) passToken(data TokenPayload) {
 
 	n := len(b.RingAddrs)
 	for step := 1; step < n; step++ {
-		nextIdx  := (myIdx + step) % n
+		nextIdx := (myIdx + step) % n
 		nextAddr := b.RingAddrs[nextIdx]
 
 		if nextAddr == b.MyAddr {
@@ -786,7 +791,7 @@ func (b *Broker) passToken(data TokenPayload) {
 	go b.tokenLoop()
 }
 
-//-------------token ring: envio TCP do token
+// -------------token ring: envio TCP do token
 func (b *Broker) sendToken(addr string, data TokenPayload) bool {
 	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	if err != nil {
@@ -799,8 +804,8 @@ func (b *Broker) sendToken(addr string, data TokenPayload) bool {
 	return json.NewEncoder(conn).Encode(msg) == nil
 }
 
-//-------------token ring: guarda-tempo para regeneração de token perdido
-//se o token não passar por este broker em tempo razoável, ele requisita aos peers que o regenerem, garantindo que o anel
+// -------------token ring: guarda-tempo para regeneração de token perdido
+// se o token não passar por este broker em tempo razoável, ele requisita aos peers que o regenerem, garantindo que o anel
 func (b *Broker) tokenTimeoutGuard() {
 	// Tolerância: 3 × número de nós × 2 segundos por nó + folga
 	intervalo := time.Duration(len(b.RingAddrs)*2+10) * time.Second
@@ -851,7 +856,7 @@ func (b *Broker) tokenTimeoutGuard() {
 	}
 }
 
-//envia MsgTokenRequest a todos os peers vivos, o primeiro que receber e não tiver o token o regenera
+// envia MsgTokenRequest a todos os peers vivos, o primeiro que receber e não tiver o token o regenera
 func (b *Broker) broadcastTokenRequest() {
 	msg := Message{Type: MsgTokenRequest, Payload: map[string]string{"from": b.MyAddr}}
 	b.peerMu.RLock()
@@ -870,8 +875,8 @@ func (b *Broker) broadcastTokenRequest() {
 	}
 }
 
-//-------------detecção de drone morto
-//verifica a cada 10s se algum drone parou de enviar heartbeat.
+// -------------detecção de drone morto
+// verifica a cada 10s se algum drone parou de enviar heartbeat.
 func (b *Broker) watchDroneHeartbeats() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -889,7 +894,7 @@ func (b *Broker) watchDroneHeartbeats() {
 
 				//salva a missão antes de zerar: ela precisa ser realocada
 				orphanMissionID := d.MissionID
-				d.Status    = "FAILED"
+				d.Status = "FAILED"
 				d.MissionID = ""
 
 				//se o drone estava em missão, reinsere o alerta na fila com prioridade máxima
@@ -913,7 +918,7 @@ func (b *Broker) watchDroneHeartbeats() {
 	}
 }
 
-//faz ping a cada 8s em cada nó do anel para manter o mapa peerAlive
+// faz ping a cada 8s em cada nó do anel para manter o mapa peerAlive
 func (b *Broker) peerHeartbeats() {
 	ticker := time.NewTicker(8 * time.Second)
 	defer ticker.Stop()
@@ -954,7 +959,7 @@ func (b *Broker) peerHeartbeats() {
 	}
 }
 
-//-------------aviso de cobertura de setor
+// -------------aviso de cobertura de setor
 func (b *Broker) anunciaCobertura(deadAddr string) {
 	msg := Message{
 		Type: MsgCoberturaSector,

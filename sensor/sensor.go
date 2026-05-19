@@ -31,7 +31,7 @@ type AlertPayload struct {
 	Priority int `json:"priority"`
 }
 
-//-------------geração de IDs únicos de 00 a 100
+// -------------geração de IDs únicos de 00 a 100
 var (
 	rng          *rand.Rand
 	availableIDs []int
@@ -61,8 +61,8 @@ func newID() string {
 	return fmt.Sprintf("%02d", id)
 }
 
-//-------------cálculo de prioridade
-//Converte o valor numérico do sensor em nível discreto de urgência.
+// -------------cálculo de prioridade
+// Converte o valor numérico do sensor em nível discreto de urgência.
 func calcPriority(value float64) int {
 	switch {
 	case value > 95:
@@ -74,15 +74,21 @@ func calcPriority(value float64) int {
 	}
 }
 
-//-------------main
+// -------------main
 func main() {
 	brokerListRaw := os.Getenv("BROKER_LIST")
-	sectorName    := os.Getenv("SECTOR_NAME")
-	sensorType    := os.Getenv("SENSOR_TYPE")
+	sectorName := os.Getenv("SECTOR_NAME")
+	sensorType := os.Getenv("SENSOR_TYPE")
 
-	if brokerListRaw == "" { brokerListRaw = "localhost:5000" }
-	if sectorName == ""    { sectorName = "Desconhecido" }
-	if sensorType == ""    { sensorType = "Generico" }
+	if brokerListRaw == "" {
+		brokerListRaw = "localhost:5000"
+	}
+	if sectorName == "" {
+		sectorName = "Desconhecido"
+	}
+	if sensorType == "" {
+		sensorType = "Generico"
+	}
 
 	var brokers []string
 	for _, b := range strings.Split(brokerListRaw, ",") {
@@ -119,8 +125,8 @@ func main() {
 	}
 }
 
-//-------------envio com fallover
-//Tenta cada broker da lista em ordem até conseguir enviar.
+// -------------envio com fallover
+// Tenta cada broker da lista em ordem até conseguir enviar.
 func sendWithFallback(brokers []string, alert AlertPayload, sensorID string) {
 	msg := Message{Type: MsgAlert, Payload: alert}
 
