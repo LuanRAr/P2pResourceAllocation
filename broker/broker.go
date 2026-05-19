@@ -128,7 +128,6 @@ type Broker struct {
 	//token ring
 	tokenMu         sync.Mutex
 	hasToken        bool
-	lastTokenSeen   time.Time
 	tokenData       TokenPayload //última versão conhecida do token
 	backupTokenData TokenPayload //backup replicado via broadcast dos peers
 
@@ -149,7 +148,6 @@ func NewBroker(name, port, myAddr string, ring []string) *Broker {
 		drones:     make(map[string]*DroneState),
 		peerAlive:  make(map[string]bool),
 		alertReady: make(chan struct{}, 64),
-		lastTokenSeen: time.Now(),
 		tokenData: TokenPayload{
 			PendingAlerts: []AlertPayload{},
 			Assigned:      make(map[string]string),
@@ -196,7 +194,6 @@ func main() {
 		fmt.Printf("[%s] sou o nó inicial — gerando token\n", name)
 		b.tokenMu.Lock()
 		b.hasToken = true
-		b.lastTokenSeen = time.Now()
 		b.tokenMu.Unlock()
 		go b.tokenLoop()
 	}
@@ -304,7 +301,6 @@ func (b *Broker) handle(conn net.Conn) {
 				b.Name, b.backupTokenData.Round)
 			b.tokenMu.Lock()
 			b.hasToken = true
-			b.lastTokenSeen = time.Now()
 			if b.backupTokenData.Round > 0 {
 				b.tokenData = b.backupTokenData
 				b.tokenData.Round++
@@ -412,7 +408,6 @@ func (b *Broker) receberToken(p TokenPayload) {
 		b.Name, p.Round, len(p.PendingAlerts))
 
 	b.hasToken = true
-	b.lastTokenSeen = time.Now()
 	b.tokenData = p
 
 	go b.tokenLoop()
@@ -606,6 +601,8 @@ process:
 // -------------replicação de estado via broadcast
 // envia uma cópia do TokenPayload atual para todos os peers vivos do anel
 func (b *Broker) broadcastState(data TokenPayload) {
+	//Descobre o próximo nó vivo para excluí-lo
+	nextToken := b.nextAliveAddr()
 
 	msg := Message{Type: MsgStateUpdate, Payload: data}
 
@@ -613,8 +610,8 @@ func (b *Broker) broadcastState(data TokenPayload) {
 	defer b.peerMu.RUnlock()
 
 	for _, addr := range b.RingAddrs {
-		if addr == b.MyAddr {
-			continue // pula a si mesmo
+		if addr == b.MyAddr || addr == nextToken {
+			continue // pula a si mesmo e o receptor do token
 		}
 		if !b.peerAlive[addr] {
 			continue // pula peers mortos
@@ -789,7 +786,6 @@ func (b *Broker) passToken(data TokenPayload) {
 	fmt.Printf("[%s] único broker vivo — retendo o token\n", b.Name)
 	b.tokenMu.Lock()
 	b.hasToken = true
-	b.lastTokenSeen = time.Now()
 	b.tokenMu.Unlock()
 	time.Sleep(2 * time.Second)
 	go b.tokenLoop()
@@ -811,26 +807,18 @@ func (b *Broker) sendToken(addr string, data TokenPayload) bool {
 // -------------token ring: guarda-tempo para regeneração de token perdido
 // se o token não passar por este broker em tempo razoável, ele requisita aos peers que o regenerem, garantindo que o anel
 func (b *Broker) tokenTimeoutGuard() {
-	// warmup window: aguarda os peers se conectarem e trocarem pings
-	time.Sleep(15 * time.Second)
-
 	// Tolerância: 3 × número de nós × 2 segundos por nó + folga
-	intervalo := time.Duration(len(b.RingAddrs)*20+15) * time.Second
+	intervalo := time.Duration(len(b.RingAddrs)*2+10) * time.Second
+	ticker := time.NewTicker(intervalo)
+	defer ticker.Stop()
 
-	for {
-		time.Sleep(2 * time.Second) // Verificação frequente
-
+	for range ticker.C {
 		b.tokenMu.Lock()
 		has := b.hasToken
-		lastSeen := b.lastTokenSeen
 		b.tokenMu.Unlock()
 
 		if has {
 			continue //se tiver token
-		}
-
-		if time.Since(lastSeen) < intervalo {
-			continue //ainda dentro da tolerância
 		}
 
 		// Verifica se há algum broker vivo que possa ter o token
@@ -851,7 +839,6 @@ func (b *Broker) tokenTimeoutGuard() {
 				b.Name, b.backupTokenData.Round)
 			b.tokenMu.Lock()
 			b.hasToken = true
-			b.lastTokenSeen = time.Now()
 			if b.backupTokenData.Round > 0 {
 				// Usa o backup replicado; incrementa o Round para sinalizar
 				// que este é um token regenerado, não uma réplica stale.
