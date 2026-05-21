@@ -207,7 +207,7 @@ services:
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-A
-      - DRONE_PORT=6000
+      - DRONE_PORT=6002
       - MY_IP=172.16.201.8
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
@@ -222,7 +222,7 @@ services:
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-B
-      - DRONE_PORT=6000
+      - DRONE_PORT=6003
       - MY_IP=172.16.201.8
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
   
@@ -237,8 +237,8 @@ services:
     environment:
       - SECTOR_NAME=Leste
       - DRONE_ID=DRONE-LESTE-A
-      - DRONE_PORT=6000
-      - MY_IP=172.16.201.8
+      - DRONE_PORT=6004
+      - MY_IP=172.16.201.11
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-leste-02:
@@ -252,8 +252,8 @@ services:
     environment:
       - SECTOR_NAME=Leste
       - DRONE_ID=DRONE-LESTE-B
-      - DRONE_PORT=6000
-      - MY_IP=172.16.201.8
+      - DRONE_PORT=6005
+      - MY_IP=172.16.201.11
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-oeste-01:
@@ -267,8 +267,8 @@ services:
     environment:
       - SECTOR_NAME=Oeste
       - DRONE_ID=DRONE-OESTE-A
-      - DRONE_PORT=6000
-      - MY_IP=172.16.201.8
+      - DRONE_PORT=6006
+      - MY_IP=172.16.201.12
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-oeste-02:
@@ -282,6 +282,6 @@ services:
     environment:
       - SECTOR_NAME=Oeste
       - DRONE_ID=DRONE-OESTE-B
-      - DRONE_PORT=6000
-      - MY_IP=172.16.201.8
+      - DRONE_PORT=6007
+      - MY_IP=172.16.201.12
       - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
