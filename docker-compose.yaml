@@ -1,6 +1,6 @@
 services:
 
-  # ─── Brokers ─────────────────────────────────────────────
+  # ─── Brokers ────────────────────────────────────────────────────────────────
 
   broker-norte:
     build:
@@ -8,12 +8,13 @@ services:
       args:
         TARGET: broker
     container_name: broker_norte
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - PORT=5000
-      - MY_IP=broker-norte
-      - RING_ADDRS=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.7
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   broker-sul:
     build:
@@ -21,12 +22,13 @@ services:
       args:
         TARGET: broker
     container_name: broker_sul
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - PORT=5000
-      - MY_IP=broker-sul
-      - RING_ADDRS=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.8
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   broker-leste:
     build:
@@ -34,28 +36,29 @@ services:
       args:
         TARGET: broker
     container_name: broker_leste
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - PORT=5000
-      - MY_IP=broker-leste
-      - RING_ADDRS=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
-
+      - MY_IP=172.16.201.11
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+    
   broker-oeste:
     build:
       context: .
       args:
         TARGET: broker
     container_name: broker_oeste
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
       - PORT=5000
-      - MY_IP=broker-oeste
-      - RING_ADDRS=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.12
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
-
-  # ─── Sensores ────────────────────────────────────────────
+  # ─── Sensores ───────────────────────────────────────────────────────────────
 
   sensor-norte-radar:
     build:
@@ -63,11 +66,38 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_norte_radar
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  sensor-norte-naval:
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_norte_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  sensor-sul-radar:
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_sul_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-sul-naval:
     build:
@@ -75,37 +105,66 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_sul_naval
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
-      - SENSOR_TYPE=NavalSensor
-      - BROKER_LIST=broker-sul:5000,broker-norte:5000,broker-leste:5000,broker-oeste:5000
-    
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
   sensor-leste-radar:
     build:
       context: .
       args:
         TARGET: sensor
     container_name: sensor_leste_radar
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=broker-leste:5000,broker-norte:5000,broker-sul:5000,broker-oeste:5000
-  
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  sensor-leste-naval:
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_leste_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  sensor-oeste-radar:
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_oeste_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
   sensor-oeste-naval:
     build:
       context: .
       args:
         TARGET: sensor
     container_name: sensor_oeste_naval
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
-      - SENSOR_TYPE=NavalSensor
-      - BROKER_LIST=broker-oeste:5000,broker-norte:5000,broker-sul:5000,broker-leste:5000 
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
-  # ─── Drones ──────────────────────────────────────────────
+  # ─── Drones ─────────────────────────────────────────────────────────────────
 
   drone-norte-01:
     build:
@@ -113,14 +172,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_01
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-A
       - DRONE_PORT=6000
-      - MY_IP=drone-norte-01
-      # CORREÇÃO: Adicionar todos os brokers da infraestrutura compartilhada
-      - BROKER_LIST=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-norte-02:
     build:
@@ -128,13 +187,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_02
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-B
       - DRONE_PORT=6001
-      - MY_IP=drone-norte-02
-      - BROKER_LIST=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-sul-01:
     build:
@@ -142,10 +202,86 @@ services:
       args:
         TARGET: drone
     container_name: drone_sul_01
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-A
       - DRONE_PORT=6000
-      - MY_IP=drone-sul-01
-      - BROKER_LIST=broker-norte:5000,broker-sul:5000,broker-leste:5000,broker-oeste:5000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  drone-sul-02:
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_sul_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - DRONE_ID=DRONE-SUL-B
+      - DRONE_PORT=6000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+  
+  drone-leste-01:
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_leste_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - DRONE_ID=DRONE-LESTE-A
+      - DRONE_PORT=6000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  drone-leste-02:
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_leste_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - DRONE_ID=DRONE-LESTE-B
+      - DRONE_PORT=6000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  drone-oeste-01:
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_oeste_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - DRONE_ID=DRONE-OESTE-A
+      - DRONE_PORT=6000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
+
+  drone-oeste-02:
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_oeste_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - DRONE_ID=DRONE-OESTE-B
+      - DRONE_PORT=6000
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.8:5000,172.16.201.11:5000,172.16.201.12:5000
