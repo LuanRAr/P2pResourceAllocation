@@ -1,17 +1,3 @@
-# =============================================================================
-# COMPOSE ÚNICO — suba apenas o perfil desta máquina:
-#
-#   docker compose --profile norte up --build
-#   docker compose --profile sul   up --build
-#   docker compose --profile leste up --build
-#
-# Antes de subir, edite o .env com os IPs reais de cada máquina.
-# Cada máquina roda este mesmo arquivo e este mesmo .env —
-# só muda qual --profile você passa na hora de subir.
-#
-# RING_ADDRS deve ser IDÊNTICO em todos os brokers para o anel funcionar.
-# =============================================================================
-
 services:
 
   # ─── Brokers ────────────────────────────────────────────────────────────────
@@ -23,13 +9,12 @@ services:
         TARGET: broker
     container_name: broker_norte
     network_mode: host
-    profiles: [norte]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - PORT=5000
-      - MY_IP=${IP_BROKER_NORTE}
-      - RING_ADDRS=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
+      - MY_IP=172.16.201.9
+      - RING_ADDRS=172.16.201.9:5000,172.16.201.10:5000
 
   broker-sul:
     build:
@@ -38,28 +23,12 @@ services:
         TARGET: broker
     container_name: broker_sul
     network_mode: host
-    profiles: [sul]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - PORT=5000
-      - MY_IP=${IP_BROKER_SUL}
-      - RING_ADDRS=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
-
-  broker-leste:
-    build:
-      context: .
-      args:
-        TARGET: broker
-    container_name: broker_leste
-    network_mode: host
-    profiles: [leste]
-    environment:
-      - SECTOR_NAME=Leste
-      - PORT=5000
-      - MY_IP=${IP_BROKER_LESTE}
-      - RING_ADDRS=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
+      - MY_IP=172.16.201.10
+      - RING_ADDRS=172.16.201.9:5000,172.16.201.10:5000
 
   # ─── Sensores ───────────────────────────────────────────────────────────────
 
@@ -70,12 +39,11 @@ services:
         TARGET: sensor
     container_name: sensor_norte_radar
     network_mode: host
-    profiles: [norte]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
+      - BROKER_LIST=172.16.201.9:5000,172.16.201.10:5000
 
   sensor-sul-naval:
     build:
@@ -84,26 +52,11 @@ services:
         TARGET: sensor
     container_name: sensor_sul_naval
     network_mode: host
-    profiles: [sul]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=NavalSensor
-      - BROKER_LIST=${IP_BROKER_SUL}:5000,${IP_BROKER_NORTE}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
-
-  sensor-leste-boia:
-    build:
-      context: .
-      args:
-        TARGET: sensor
-    container_name: sensor_leste_boia
-    network_mode: host
-    profiles: [leste]
-    environment:
-      - SECTOR_NAME=Leste
-      - SENSOR_TYPE=Boia
-      - BROKER_LIST=${IP_BROKER_LESTE}:5000,${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000
-    restart: unless-stopped
+      - BROKER_LIST=172.16.201.10:5000,172.16.201.9:5000
 
   # ─── Drones ─────────────────────────────────────────────────────────────────
 
@@ -114,14 +67,13 @@ services:
         TARGET: drone
     container_name: drone_norte_01
     network_mode: host
-    profiles: [norte]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-A
       - DRONE_PORT=6000
-      - MY_IP=${IP_DRONE_NORTE_01}
-      - BROKER_LIST=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
+      - MY_IP=172.16.201.9
+      - BROKER_LIST=172.16.201.9:5000,172.16.201.10:5000
 
   drone-norte-02:
     build:
@@ -130,14 +82,13 @@ services:
         TARGET: drone
     container_name: drone_norte_02
     network_mode: host
-    profiles: [norte]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-B
-      - DRONE_PORT=6001   # porta diferente pois ambos os drones norte estão no mesmo host
-      - MY_IP=${IP_DRONE_NORTE_02}
-      - BROKER_LIST=${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
+      - DRONE_PORT=6001
+      - MY_IP=172.16.201.9
+      - BROKER_LIST=172.16.201.9:5000,172.16.201.10:5000
 
   drone-sul-01:
     build:
@@ -146,27 +97,10 @@ services:
         TARGET: drone
     container_name: drone_sul_01
     network_mode: host
-    profiles: [sul]
+    restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-A
       - DRONE_PORT=6000
-      - MY_IP=${IP_DRONE_SUL_01}
-      - BROKER_LIST=${IP_BROKER_SUL}:5000,${IP_BROKER_NORTE}:5000,${IP_BROKER_LESTE}:5000
-    restart: unless-stopped
-
-  drone-leste-01:
-    build:
-      context: .
-      args:
-        TARGET: drone
-    container_name: drone_leste_01
-    network_mode: host
-    profiles: [leste]
-    environment:
-      - SECTOR_NAME=Leste
-      - DRONE_ID=DRONE-LESTE-A
-      - DRONE_PORT=6000
-      - MY_IP=${IP_DRONE_LESTE_01}
-      - BROKER_LIST=${IP_BROKER_LESTE}:5000,${IP_BROKER_NORTE}:5000,${IP_BROKER_SUL}:5000
-    restart: unless-stopped
+      - MY_IP=172.16.201.10
+      - BROKER_LIST=172.16.201.10:5000,172.16.201.9:5000
